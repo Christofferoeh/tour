@@ -15,7 +15,7 @@ import Zoom from "chartjs-plugin-zoom";
 import CrosshairPlugin from "chartjs-plugin-crosshair";
 import {useEffect, useState} from "react";
 
-function StageProfile ({stage}) {
+function StageProfile ({stage, highlights, index}) {
     const [width, setWidth] = useState(window.innerWidth);
 
     function handleWindowSizeChange() {
@@ -42,6 +42,22 @@ function StageProfile ({stage}) {
         Zoom
     );
 
+    const pluginFreezeY = {
+        afterLayout: (chart) => {
+            freezeAxis(chart.scales.y);
+    }
+    }
+
+    let initScale;
+
+    function freezeAxis(scale) {
+        scale.options.min = scale.min;
+        if (initScale === undefined){
+            initScale = scale.max + 100;
+        }
+        scale.options.max = initScale;
+    }
+
     const options = {
         animation: false,
         responsive: true,
@@ -60,7 +76,9 @@ function StageProfile ({stage}) {
                 ticks: {
                 callback: function(value, index, ticks) {
                     return value + " m";
-                }
+                },
+                    max: 600,
+                    steps: 10,
                 }
             },
             x: {
@@ -118,12 +136,14 @@ function StageProfile ({stage}) {
         id: "crosshairLabel",
         afterDatasetsDraw(chart, args, options, cancelable) {
             const { ctx, chartArea: {left, right, top, bottom}, scales: { x, y } } = chart;
+            const mountains = ["4", "3", "2", "1", "HC"]
 
             ctx.lineWidth = 2;
             ctx.strokeStyle = "grey";
 
 
             if(crosshair){
+                console.log("x: ", x.getValueForPixel(crosshair[1].startX))
                 ctx.save();
                 ctx.beginPath();
                 ctx.moveTo(crosshair[1].startX, crosshair[1].startY);
@@ -138,6 +158,7 @@ function StageProfile ({stage}) {
                 ctx.fillText((data.labels.slice(-1)[0] - data.labels[x.getValueForPixel(crosshair[1].startX)]).toFixed(0) + "km", left/2, crosshair[0].startY + 22);
             }
             ctx.fillStyle = "black";
+
             if(selection?.startX != -1){
                 ctx.fillRect(selection.startX, top, 1, bottom);
             }
@@ -152,11 +173,35 @@ function StageProfile ({stage}) {
                 const distanceDifference = (data.labels[x.getValueForPixel(selection?.endX)] * 100) - (data.labels[x.getValueForPixel(selection?.startX)] * 100)
                 ctx.fillText((distanceDifference*10).toFixed(2) + "m " + ": " + (elevationDifference/distanceDifference*10).toFixed(2) + "%", selection.startX + width / 2, bottom+12);
             }
+
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "center"
+
+            highlights[index]?.forEach((highlight) => {
+                ctx.font = "bold 16px sans-serif";
+                const highlightPositionX = x.getPixelForValue(highlight["distance"])
+                const highlightPositionY = y.getPixelForValue(data.datasets[0].data[highlight["distance"]]?.elevation)
+                ctx.fillStyle = mountains.includes(highlight["type"]) ? "rgba(167,0,0,1)" : "rgba(19, 139, 19, 1)";
+                ctx.fillRect(highlightPositionX-10, highlightPositionY-40, 20, 20);
+                ctx.fillStyle = "white";
+                ctx.fillText(highlight["type"], highlightPositionX, highlightPositionY - 24)
+                ctx.font = "bold 10px sans-serif";
+                ctx.fillStyle = "black";
+                ctx.fillText(highlight["name"], highlightPositionX, highlightPositionY - 44)
+                if(highlight["bonus"]){
+                    ctx.fillStyle = "rgba(217,189,0,1)";
+                    ctx.fillRect(highlightPositionX+10, highlightPositionY-40, 20, 20);
+                    ctx.fillStyle = "black";
+                    ctx.font = "bold 16px sans-serif";
+                    ctx.fillText("B", highlightPositionX+20, highlightPositionY - 24)
+                }
+            })
         },
         afterEvent(chart, args) {
-            const { ctx, chartArea: {left, right, top, bottom} } = chart;
+            const { ctx, chartArea: {left, right, top, bottom}, scales: { x, y } } = chart;
             const xCoor = args.event.x;
             const yCoor = args.event.y;
+            const mountains = ["4", "3", "2", "1", "HC"]
 
             if(!args.inChartArea && crosshair) {
                 crosshair = undefined;
@@ -191,8 +236,21 @@ function StageProfile ({stage}) {
                     hasSelection = 2;
                 }
                 if(args.event.type === "click" && selection["startX"] === -1 && hasSelection === 0) {
-                    selection["startX"] = xCoor;
-                    hasSelection = 1;
+                    const withinHighlights = highlights[index]?.map((highlight) => {
+                        const highlightPositionX = x.getPixelForValue(highlight["distance"])
+                        const highlightPositionY = y.getPixelForValue(data.datasets[0].data[highlight["distance"]]?.elevation)
+                        if(Math.abs(highlightPositionY - yCoor - 30) < 10 && Math.abs(highlightPositionX - xCoor) < 10 && mountains.includes(highlight["type"])){
+                            selection["startX"] = x.getPixelForValue(highlight["start"]);
+                            selection["endX"] = highlightPositionX;
+                            hasSelection = 2;
+                            return true;
+                        }
+                        return false;
+                    });
+                    if(!withinHighlights?.some((x) => x === true)) {
+                        selection["startX"] = xCoor;
+                        hasSelection = 1;
+                    }
                 }
                 args.changed = true;
             }
@@ -226,7 +284,7 @@ function StageProfile ({stage}) {
 
     return (
         <div style={{width: "100%", height: "400px"}}>
-            <Line data={data} plugins={[crosshairLabel]} options = {options}/>
+            <Line data={data} plugins={[crosshairLabel, pluginFreezeY]} options = {options}/>
         </div>
     );
 }

@@ -1,4 +1,4 @@
-export const stage2 = [
+export const stage2 =[
     {
         "id": 0,
         "coordinates": [

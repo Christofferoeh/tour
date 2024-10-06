@@ -1,14 +1,26 @@
 import logo from './logo.svg';
 import './App.css';
 import StageProfile from "./components/StageProfile";
-import { stages } from "../src/data/tdf/stages"
-//import haversine from "haversine-distance";
-import {useState} from "react";
+import { highlights, stages } from "../src/data/tdf/stages"
+import {useEffect, useState} from "react";
+import axios from "axios";
 
 function App() {
     const search = window.location.search;
     const params = new URLSearchParams(search);
     const [stage, setStage] = useState(stages[params.get("stage")]);
+    const [liveData, setLiveData] = useState({});
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            axios.get(`https://tracker.helmuga.cloud/resources/livetracker/${1472 + parseInt(params.get("stage"))}/update.json`).then((res) => {
+                setLiveData(res);
+
+            })
+        }, 60000)
+
+        return () => clearInterval(interval)
+    }, [])
 
     /*
     const stage = stage21.features[0].geometry.coordinates.map((feature, idx) => {
@@ -65,7 +77,7 @@ function App() {
               <option value="20">Stage 21</option>
           </select>
           <div>To be viewed on desktop, click to calculate slope percentages</div>
-          <StageProfile stage={stage}/>
+          <StageProfile stage={stage} highlights={highlights} index={params.get("stage")}/>
       </div>
     </div>
   );
